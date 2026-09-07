@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>二択サバイバル</title>
+<style>
+:root{--bg:#0b1020;--panel:#151c31;--text:#f8fafc;--muted:#94a3b8;--a:#ff4d67;--b:#4d8dff;--ok:#35d07f;--gold:#ffd166}*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,"Noto Sans JP",system-ui,sans-serif;background:radial-gradient(circle at top,#182347 0,#0b1020 50%,#070b15 100%);color:var(--text)}body{min-height:100vh;min-height:100dvh}.screen{min-height:100vh;min-height:100dvh;padding:18px max(16px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));display:flex;flex-direction:column}.brand{text-align:center;padding:8px 0 18px}.brand h1{font-size:28px;margin:0}.brand p{color:var(--muted);margin:6px 0 0;font-size:14px}.card{background:rgba(21,28,49,.96);border:1px solid rgba(255,255,255,.08);border-radius:24px;box-shadow:0 18px 50px rgba(0,0,0,.28)}#joinCard{padding:22px;margin:auto 0}.joinTitle{font-size:30px;font-weight:950;line-height:1.2}.input{width:100%;margin-top:18px;border:1px solid #34415f;background:#0d1427;color:#fff;border-radius:16px;padding:17px;font-size:18px;outline:none}.input:focus{border-color:#667eea}.btn{border:0;border-radius:16px;padding:17px;font-size:18px;font-weight:900;width:100%;cursor:pointer}.btn.join{margin-top:12px;background:linear-gradient(135deg,#7c5cff,#4d8dff);color:white}.game{display:none;flex:1;flex-direction:column;gap:14px}.game.show{display:flex}.status{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:13px}.pill{background:#10182b;border:1px solid #2a3858;border-radius:999px;padding:7px 10px}.questionCard{padding:20px;flex:1;display:flex;flex-direction:column}.round{color:var(--gold);font-size:13px;font-weight:900;letter-spacing:.08em}.qtext{font-size:clamp(30px,8vw,48px);font-weight:950;line-height:1.12;letter-spacing:-.035em;margin:18px 0 20px}.choices{display:grid;gap:13px;margin-top:auto}.choice{border:2px solid;border-radius:22px;min-height:130px;padding:18px;display:flex;align-items:center;gap:16px;color:white;cursor:pointer;transition:.15s transform,.15s opacity,.15s filter}.choice:active{transform:scale(.985)}.choice.a{background:linear-gradient(135deg,rgba(255,77,103,.95),rgba(204,45,75,.95));border-color:#ff8396}.choice.b{background:linear-gradient(135deg,rgba(77,141,255,.95),rgba(55,90,208,.95));border-color:#8ab3ff}.letter{font-size:40px;font-weight:950;width:52px;text-align:center}.choiceText{font-size:clamp(24px,6vw,34px);font-weight:950;line-height:1.15}.choices.locked .choice{opacity:.5;filter:saturate(.6)}.choices.locked .choice.selected{opacity:1;filter:none;outline:4px solid rgba(255,255,255,.85);outline-offset:2px}.waiting{display:none;text-align:center;padding:18px;border-radius:18px;background:#0d1427;color:#cbd5e1;font-weight:800}.waiting.show{display:block}.result{display:none;background:#0d1427;border-radius:20px;padding:20px}.result.show{display:block}.resultTitle{font-size:28px;font-weight:950}.correct{color:var(--ok)}.wrong{color:#ff6b7d}.explain{margin-top:10px;color:#cbd5e1;line-height:1.6}.eliminated{font-size:34px;font-weight:950;color:#ff7386;margin-top:14px}.winner{font-size:34px;font-weight:950;color:var(--gold);margin-top:14px}.you{font-size:13px;color:#94a3b8;text-align:center;padding-top:4px}@media(min-width:700px){.screen{width:min(620px,100%);margin:auto}.choice{min-height:150px}}
+</style>
+</head>
+<body>
+<div class="screen">
+  <div class="brand"><h1>⚡ 二択サバイバル</h1><p>選んで、生き残れ。</p></div>
+  <section id="joinCard" class="card">
+    <div class="joinTitle">名前を入れて<br>ゲームに参加</div>
+    <input id="nameInput" class="input" maxlength="12" placeholder="ニックネーム" autocomplete="off">
+    <button id="joinBtn" class="btn join">参加する</button>
+  </section>
+  <section id="game" class="game">
+    <div class="status"><span id="phase" class="pill">待機中</span><span id="aliveText">生存 0人</span></div>
+    <div class="card questionCard">
+      <div id="round" class="round">READY</div>
+      <div id="qText" class="qtext">ホストが問題を出すまで待ってね</div>
+      <div id="choices" class="choices" style="display:none">
+        <button class="choice a" data-choice="A"><span class="letter">A</span><span id="choiceA" class="choiceText"></span></button>
+        <button class="choice b" data-choice="B"><span class="letter">B</span><span id="choiceB" class="choiceText"></span></button>
+      </div>
+      <div id="waiting" class="waiting">回答を送信しました。正解発表を待とう！</div>
+      <div id="result" class="result"><div id="resultTitle" class="resultTitle"></div><div id="explain" class="explain"></div><div id="resultBig"></div></div>
+    </div>
+    <div id="you" class="you"></div>
+  </section>
+</div>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket=io();const $=id=>document.getElementById(id);let joined=false,myName='',myChoice=null,myStatus='alive';
+const labels={lobby:'待機中',question:'回答受付中',result:'結果発表',finished:'ゲーム終了'};
+$('joinBtn').onclick=join;$('nameInput').addEventListener('keydown',e=>{if(e.key==='Enter')join()});
+function join(){const n=$('nameInput').value.trim();if(!n)return;myName=n;socket.emit('join',n)}
+socket.on('joined',data=>{joined=true;myName=data.name;$('joinCard').style.display='none';$('game').classList.add('show');$('you').textContent=`あなた：${myName}`});
+socket.on('gameState',state=>{if(!joined)return;$('phase').textContent=labels[state.phase]||state.phase;$('aliveText').textContent=`生存 ${state.aliveCount}人`;$('round').textContent=state.round?`ROUND ${state.round}`:'READY';if(state.phase==='lobby'&&!state.currentQuestion){myChoice=null;$('choices').style.display='none';$('waiting').classList.remove('show');$('result').classList.remove('show');$('qText').textContent=state.round?'次の問題を待とう':'ホストが問題を出すまで待ってね'}if(state.currentQuestion&&state.phase==='question'){showQuestion(state.currentQuestion)}if(state.phase==='finished'&&!state.currentQuestion){$('choices').style.display='none'}});
+socket.on('question',q=>{if(joined)showQuestion(q)});
+function showQuestion(q){if(myStatus==='dead'){return}myChoice=null;$('qText').textContent=q.question;$('choiceA').textContent=q.choiceA;$('choiceB').textContent=q.choiceB;$('choices').style.display='grid';$('choices').classList.remove('locked');document.querySelectorAll('.choice').forEach(b=>b.classList.remove('selected'));$('waiting').classList.remove('show');$('result').classList.remove('show')}
+document.querySelectorAll('.choice').forEach(btn=>btn.onclick=()=>{if(myStatus!=='alive'||myChoice)return;myChoice=btn.dataset.choice;socket.emit('choose',myChoice);$('choices').classList.add('locked');btn.classList.add('selected');$('waiting').classList.add('show')});
+socket.on('choiceAccepted',choice=>{myChoice=choice});
+socket.on('update',players=>{const me=Object.values(players).find(p=>p.name===myName);if(me)myStatus=me.status});
+socket.on('showAnswer',data=>{if(!joined)return;$('waiting').classList.remove('show');$('result').classList.add('show');const correctText=data.correct==='A'?data.choiceA:data.choiceB;const isCorrect=myChoice===data.correct&&myStatus==='alive';$('resultTitle').innerHTML=`正解は <span class="correct">${data.correct}「${escapeHtml(correctText)}」</span>`;$('explain').textContent=data.explanation||'';const big=$('resultBig');if(data.winner){big.className='winner';big.textContent=data.winner===myName?'🏆 あなたの優勝！':`🏆 優勝：${data.winner}`}else if(isCorrect){big.className='winner';big.textContent='⭕ 生き残り！'}else{big.className='eliminated';big.textContent='💀 脱落…'}$('choices').style.display='none'});
+socket.on('gameReset',()=>{myStatus='alive';myChoice=null;$('result').classList.remove('show');$('qText').textContent='新しいゲームが始まります';$('choices').style.display='none'});
+function escapeHtml(s){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+</script>
+</body>
+</html>
