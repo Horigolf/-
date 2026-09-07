@@ -1,170 +1,21 @@
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server);
-app.use(express.static('public'));
-
-let players = {};
-let currentQuestion = null;
-let hostSocketId = null;
-let phase = 'lobby';
-let round = 0;
-let usedQuestionIds = new Set();
-
-const questions = {
-  party: [
-    { id:'party-1', question:'日本で施設数が多いのは？', choiceA:'コンビニ', choiceB:'歯科診療所', correctAnswer:'B', difficulty:2, explanation:'歯科診療所は全国で約6万施設あり、コンビニ店舗数を上回る。' },
-    { id:'party-2', question:'1円玉1枚の重さは？', choiceA:'1g', choiceB:'2g', correctAnswer:'A', difficulty:1, explanation:'1円硬貨はちょうど1g。' },
-    { id:'party-3', question:'一般的なサイコロで向かい合う面の合計は？', choiceA:'7', choiceB:'8', correctAnswer:'A', difficulty:1, explanation:'1と6、2と5、3と4が向かい合い、合計はすべて7。' },
-    { id:'party-4', question:'先に発売されたのは？', choiceA:'ファミコン', choiceB:'ゲームボーイ', correctAnswer:'A', difficulty:1, explanation:'ファミコンは1983年、ゲームボーイは1989年。' },
-    { id:'party-5', question:'成人の骨の数は一般に？', choiceA:'約206個', choiceB:'約306個', correctAnswer:'A', difficulty:2, explanation:'成人の骨は一般に206個とされる。' },
-    { id:'party-6', question:'トランプ1組（ジョーカー除く）は？', choiceA:'52枚', choiceB:'54枚', correctAnswer:'A', difficulty:1, explanation:'13枚×4スートで52枚。' }
-  ],
-  close: [
-    { id:'close-1', question:'富士山の高さに近いのは？', choiceA:'3,776m', choiceB:'3,676m', correctAnswer:'A', difficulty:2, explanation:'富士山の標高は3,776m。' },
-    { id:'close-2', question:'地球の直径に近いのは？', choiceA:'約12,742km', choiceB:'約13,742km', correctAnswer:'A', difficulty:2, explanation:'地球の平均直径は約12,742km。' },
-    { id:'close-3', question:'1日は何秒？', choiceA:'86,400秒', choiceB:'84,600秒', correctAnswer:'A', difficulty:2, explanation:'24×60×60で86,400秒。' },
-    { id:'close-4', question:'1年は平年で何時間？', choiceA:'8,760時間', choiceB:'8,670時間', correctAnswer:'A', difficulty:2, explanation:'365×24で8,760時間。' },
-    { id:'close-5', question:'フルマラソンの距離は？', choiceA:'42.195km', choiceB:'42.915km', correctAnswer:'A', difficulty:2, explanation:'正式距離は42.195km。' },
-    { id:'close-6', question:'100円玉の直径に近いのは？', choiceA:'22.6mm', choiceB:'26.2mm', correctAnswer:'A', difficulty:3, explanation:'100円硬貨の直径は22.6mm。' }
-  ],
-  trick: [
-    { id:'trick-1', question:'日本の47都道府県。「県」はいくつ？', choiceA:'43', choiceB:'44', correctAnswer:'A', difficulty:2, explanation:'1都1道2府43県で合計47。' },
-    { id:'trick-2', question:'0は偶数？', choiceA:'偶数', choiceB:'偶数ではない', correctAnswer:'A', difficulty:2, explanation:'0は2で割り切れるので偶数。' },
-    { id:'trick-3', question:'北極と南極、平均的に標高が高いのは？', choiceA:'南極', choiceB:'北極', correctAnswer:'A', difficulty:3, explanation:'南極は大陸上の厚い氷床。北極は主に海氷。' },
-    { id:'trick-4', question:'世界最大の砂漠は？', choiceA:'南極', choiceB:'サハラ砂漠', correctAnswer:'A', difficulty:3, explanation:'降水量基準では南極が世界最大の砂漠。' },
-    { id:'trick-5', question:'ペンギンが野生で暮らすのは？', choiceA:'南半球中心', choiceB:'北極中心', correctAnswer:'A', difficulty:1, explanation:'野生のペンギンは南半球を中心に分布する。' },
-    { id:'trick-6', question:'トマトは植物学上どちら？', choiceA:'果実', choiceB:'根菜', correctAnswer:'A', difficulty:1, explanation:'花の子房からできるため植物学上は果実。' }
-  ],
-  japan: [
-    { id:'japan-1', question:'面積が大きいのは？', choiceA:'北海道', choiceB:'九州', correctAnswer:'A', difficulty:1, explanation:'北海道は約8.3万km²で九州より大きい。' },
-    { id:'japan-2', question:'標高が高いのは？', choiceA:'富士山', choiceB:'北岳', correctAnswer:'A', difficulty:1, explanation:'富士山3,776m、北岳3,193m。' },
-    { id:'japan-3', question:'東にあるのは？', choiceA:'東京', choiceB:'札幌', correctAnswer:'A', difficulty:2, explanation:'札幌は東京より北だが、経度は東京の方が東。' },
-    { id:'japan-4', question:'日本で一番長い川は？', choiceA:'信濃川', choiceB:'利根川', correctAnswer:'A', difficulty:1, explanation:'信濃川は367kmで日本最長。' },
-    { id:'japan-5', question:'日本で一番大きい湖は？', choiceA:'琵琶湖', choiceB:'霞ヶ浦', correctAnswer:'A', difficulty:1, explanation:'琵琶湖が日本最大。' },
-    { id:'japan-6', question:'先に開業した新幹線区間は？', choiceA:'東京〜新大阪', choiceB:'新大阪〜岡山', correctAnswer:'A', difficulty:1, explanation:'東海道新幹線は1964年、新大阪〜岡山は1972年。' }
-  ],
-  world: [
-    { id:'world-1', question:'面積が大きいのは？', choiceA:'オーストラリア', choiceB:'インド', correctAnswer:'A', difficulty:1, explanation:'オーストラリアは約769万km²、インドは約329万km²。' },
-    { id:'world-2', question:'面積が大きいのは？', choiceA:'メキシコ', choiceB:'南アフリカ', correctAnswer:'A', difficulty:2, explanation:'メキシコは約196万km²、南アフリカは約122万km²。' },
-    { id:'world-3', question:'人口が多いのは？', choiceA:'インド', choiceB:'中国', correctAnswer:'A', difficulty:1, explanation:'インドは2023年に中国を抜き世界最多人口となった。' },
-    { id:'world-4', question:'赤道が通るのは？', choiceA:'エクアドル', choiceB:'チリ', correctAnswer:'A', difficulty:1, explanation:'エクアドルには赤道が通る。' },
-    { id:'world-5', question:'首都が北にあるのは？', choiceA:'ロンドン', choiceB:'パリ', correctAnswer:'A', difficulty:1, explanation:'ロンドンは北緯約51.5度、パリは約48.9度。' },
-    { id:'world-6', question:'国土面積が大きいのは？', choiceA:'ブラジル', choiceB:'オーストラリア', correctAnswer:'A', difficulty:2, explanation:'ブラジルの方がやや大きい。' }
-  ],
-  food: [
-    { id:'food-1', question:'一般に同量ならカフェインが多いのは？', choiceA:'ドリップコーヒー', choiceB:'緑茶', correctAnswer:'A', difficulty:1, explanation:'抽出条件で変わるが、一般的な比較ではコーヒーが多い。' },
-    { id:'food-2', question:'世界三大料理に数えられるのは？', choiceA:'トルコ料理', choiceB:'イタリア料理', correctAnswer:'A', difficulty:2, explanation:'一般にフランス・中国・トルコ料理が世界三大料理と呼ばれる。' },
-    { id:'food-3', question:'主原料が米なのは？', choiceA:'日本酒', choiceB:'ウイスキー', correctAnswer:'A', difficulty:1, explanation:'日本酒は米、米麹、水が主原料。' },
-    { id:'food-4', question:'カカオ豆から作られるのは？', choiceA:'チョコレート', choiceB:'キャラメル', correctAnswer:'A', difficulty:1, explanation:'チョコレートの主原料はカカオ豆。' },
-    { id:'food-5', question:'一般にアルコール度数が高いのは？', choiceA:'ワイン', choiceB:'ビール', correctAnswer:'A', difficulty:1, explanation:'一般的にワインはビールより度数が高い。' },
-    { id:'food-6', question:'辛味成分カプサイシンを含むのは？', choiceA:'唐辛子', choiceB:'わさび', correctAnswer:'A', difficulty:1, explanation:'唐辛子の代表的な辛味成分がカプサイシン。' }
-  ],
-  sports: [
-    { id:'sports-1', question:'サッカーの1チーム、ピッチ上の人数は？', choiceA:'11人', choiceB:'12人', correctAnswer:'A', difficulty:1, explanation:'ゴールキーパーを含め11人。' },
-    { id:'sports-2', question:'バスケの1チーム、コート上の人数は？', choiceA:'5人', choiceB:'6人', correctAnswer:'A', difficulty:1, explanation:'コート上は1チーム5人。' },
-    { id:'sports-3', question:'ゴルフで規定打数より1打少ないのは？', choiceA:'バーディー', choiceB:'イーグル', correctAnswer:'A', difficulty:1, explanation:'バーディーは1打少ない、イーグルは2打少ない。' },
-    { id:'sports-4', question:'テニスで40-40を何という？', choiceA:'デュース', choiceB:'タイブレーク', correctAnswer:'A', difficulty:1, explanation:'40-40はデュース。' },
-    { id:'sports-5', question:'ボウリングは基本何フレーム？', choiceA:'10', choiceB:'12', correctAnswer:'A', difficulty:1, explanation:'1ゲームは10フレーム。' },
-    { id:'sports-6', question:'野球で三振に必要なストライク数は？', choiceA:'3', choiceB:'4', correctAnswer:'A', difficulty:1, explanation:'3ストライクで三振。' }
-  ],
-  darts: [
-    { id:'darts-1', question:'ダーツ3投の最高得点は？', choiceA:'180点', choiceB:'177点', correctAnswer:'A', difficulty:1, explanation:'トリプル20を3本で180点。' },
-    { id:'darts-2', question:'ブルの中心「ダブルブル」は？', choiceA:'50点', choiceB:'25点', correctAnswer:'A', difficulty:1, explanation:'一般的なソフト/スティールのセパレートブルでは中心は50点。' },
-    { id:'darts-3', question:'T20の得点は？', choiceA:'60点', choiceB:'40点', correctAnswer:'A', difficulty:1, explanation:'20のトリプルなので60点。' },
-    { id:'darts-4', question:'01で「ハットトリック」は一般に？', choiceA:'3本すべてブル', choiceB:'3本すべてT20', correctAnswer:'A', difficulty:2, explanation:'3本ともブルに入れることをハットトリックと呼ぶ。' },
-    { id:'darts-5', question:'クリケットのナンバーに含まれるのは？', choiceA:'15', choiceB:'14', correctAnswer:'A', difficulty:1, explanation:'標準クリケットは15〜20とブル。' },
-    { id:'darts-6', question:'D20の得点は？', choiceA:'40点', choiceB:'20点', correctAnswer:'A', difficulty:1, explanation:'20のダブルなので40点。' }
-  ],
-  adult: [
-    { id:'adult-1', question:'一般的な名刺の受け渡しで上に向けるのは？', choiceA:'相手が読める向き', choiceB:'自分が読める向き', correctAnswer:'A', difficulty:1, explanation:'相手から読める向きで差し出すのが基本。' },
-    { id:'adult-2', question:'「御中」を使う相手は？', choiceA:'会社・部署', choiceB:'個人名', correctAnswer:'A', difficulty:1, explanation:'会社や部署には御中、個人には様を使う。' },
-    { id:'adult-3', question:'日本の成人年齢は？', choiceA:'18歳', choiceB:'20歳', correctAnswer:'A', difficulty:1, explanation:'2022年4月から成人年齢は18歳。' },
-    { id:'adult-4', question:'クーリングオフはすべての買い物に使える？', choiceA:'使えない', choiceB:'使える', correctAnswer:'A', difficulty:2, explanation:'対象となる取引類型や条件が決められている。' },
-    { id:'adult-5', question:'「税込1,100円」。消費税10%なら税抜は？', choiceA:'1,000円', choiceB:'990円', correctAnswer:'A', difficulty:1, explanation:'1,000円×1.10＝1,100円。' },
-    { id:'adult-6', question:'銀行の普通預金。一般に利息へかかる税は？', choiceA:'かかる', choiceB:'かからない', correctAnswer:'A', difficulty:2, explanation:'預金利息には原則として税金が源泉徴収される。' }
-  ]
+const express=require('express');const http=require('http');const{Server}=require('socket.io');
+const app=express(),server=http.createServer(app),io=new Server(server);app.use(express.static('public'));
+let players={},currentQuestion=null,hostSocketId=null,phase='lobby',round=0,usedQuestionIds=new Set();
+const q=(id,question,choiceA,choiceB,correctAnswer,explanation,difficulty=1,rule='quiz')=>({id,question,choiceA,choiceB,correctAnswer,explanation,difficulty,rule});
+const questions={
+party:[q('party-1','日本で施設数が多いのは？','コンビニ','歯科診療所','B','歯科診療所は全国で約6万施設あり、コンビニ店舗数を上回る。',2),q('party-2','1円玉1枚の重さは？','1g','2g','A','1円硬貨はちょうど1g。'),q('party-3','一般的なサイコロで向かい合う面の合計は？','7','8','A','1と6、2と5、3と4が向かい合い、合計はすべて7。'),q('party-4','先に発売されたのは？','ファミコン','ゲームボーイ','A','ファミコンは1983年、ゲームボーイは1989年。'),q('party-5','成人の骨の数は一般に？','約206個','約306個','A','成人の骨は一般に206個とされる。',2),q('party-6','トランプ1組（ジョーカー除く）は？','52枚','54枚','A','13枚×4スートで52枚。')],
+close:[q('close-1','富士山の高さに近いのは？','3,776m','3,676m','A','富士山の標高は3,776m。',2),q('close-2','地球の直径に近いのは？','約12,742km','約13,742km','A','地球の平均直径は約12,742km。',2),q('close-3','1日は何秒？','86,400秒','84,600秒','A','24×60×60で86,400秒。',2),q('close-4','1年は平年で何時間？','8,760時間','8,670時間','A','365×24で8,760時間。',2),q('close-5','フルマラソンの距離は？','42.195km','42.915km','A','正式距離は42.195km。',2),q('close-6','100円玉の直径に近いのは？','22.6mm','26.2mm','A','100円硬貨の直径は22.6mm。',3)],
+trick:[q('trick-1','日本の47都道府県。「県」はいくつ？','43','44','A','1都1道2府43県で合計47。',2),q('trick-2','0は偶数？','偶数','偶数ではない','A','0は2で割り切れるので偶数。',2),q('trick-3','北極と南極、平均的に標高が高いのは？','南極','北極','A','南極は大陸上の厚い氷床。北極は主に海氷。',3),q('trick-4','世界最大の砂漠は？','南極','サハラ砂漠','A','降水量基準では南極が世界最大の砂漠。',3),q('trick-5','ペンギンが野生で暮らすのは？','南半球中心','北極中心','A','野生のペンギンは南半球を中心に分布する。'),q('trick-6','トマトは植物学上どちら？','果実','根菜','A','花の子房からできるため植物学上は果実。')],
+japan:[q('japan-1','面積が大きいのは？','北海道','九州','A','北海道は約8.3万km²で九州より大きい。'),q('japan-2','標高が高いのは？','富士山','北岳','A','富士山3,776m、北岳3,193m。'),q('japan-3','東にあるのは？','東京','札幌','A','札幌は東京より北だが、経度は東京の方が東。',2),q('japan-4','日本で一番長い川は？','信濃川','利根川','A','信濃川は367kmで日本最長。'),q('japan-5','日本で一番大きい湖は？','琵琶湖','霞ヶ浦','A','琵琶湖が日本最大。'),q('japan-6','先に開業した新幹線区間は？','東京〜新大阪','新大阪〜岡山','A','東海道新幹線は1964年、新大阪〜岡山は1972年。')],
+world:[q('world-1','面積が大きいのは？','オーストラリア','インド','A','オーストラリアは約769万km²、インドは約329万km²。'),q('world-2','面積が大きいのは？','メキシコ','南アフリカ','A','メキシコは約196万km²、南アフリカは約122万km²。',2),q('world-3','人口が多いのは？','インド','中国','A','インドは2023年に中国を抜き世界最多人口となった。'),q('world-4','赤道が通るのは？','エクアドル','チリ','A','エクアドルには赤道が通る。'),q('world-5','首都が北にあるのは？','ロンドン','パリ','A','ロンドンは北緯約51.5度、パリは約48.9度。'),q('world-6','国土面積が大きいのは？','ブラジル','オーストラリア','A','ブラジルの方がやや大きい。',2)],
+food:[q('food-1','一般に同量ならカフェインが多いのは？','ドリップコーヒー','緑茶','A','抽出条件で変わるが、一般的な比較ではコーヒーが多い。'),q('food-2','世界三大料理に数えられるのは？','トルコ料理','イタリア料理','A','一般にフランス・中国・トルコ料理が世界三大料理と呼ばれる。',2),q('food-3','主原料が米なのは？','日本酒','ウイスキー','A','日本酒は米、米麹、水が主原料。'),q('food-4','カカオ豆から作られるのは？','チョコレート','キャラメル','A','チョコレートの主原料はカカオ豆。'),q('food-5','一般にアルコール度数が高いのは？','ワイン','ビール','A','一般的にワインはビールより度数が高い。'),q('food-6','辛味成分カプサイシンを含むのは？','唐辛子','わさび','A','唐辛子の代表的な辛味成分がカプサイシン。')],
+sports:[q('sports-1','サッカーの1チーム、ピッチ上の人数は？','11人','12人','A','ゴールキーパーを含め11人。'),q('sports-2','バスケの1チーム、コート上の人数は？','5人','6人','A','コート上は1チーム5人。'),q('sports-3','ゴルフで規定打数より1打少ないのは？','バーディー','イーグル','A','バーディーは1打少ない、イーグルは2打少ない。'),q('sports-4','テニスで40-40を何という？','デュース','タイブレーク','A','40-40はデュース。'),q('sports-5','ボウリングは基本何フレーム？','10','12','A','1ゲームは10フレーム。'),q('sports-6','野球で三振に必要なストライク数は？','3','4','A','3ストライクで三振。')],
+darts:[q('darts-1','ダーツ3投の最高得点は？','180点','177点','A','トリプル20を3本で180点。'),q('darts-2','ブルの中心「ダブルブル」は？','50点','25点','A','セパレートブルでは中心は50点。'),q('darts-3','T20の得点は？','60点','40点','A','20のトリプルなので60点。'),q('darts-4','「ハットトリック」は一般に？','3本すべてブル','3本すべてT20','A','3本ともブルに入れることをハットトリックと呼ぶ。',2),q('darts-5','標準クリケットに含まれるのは？','15','14','A','標準クリケットは15〜20とブル。'),q('darts-6','D20の得点は？','40点','20点','A','20のダブルなので40点。')],
+adult:[q('adult-1','一般的な名刺の受け渡しで上に向けるのは？','相手が読める向き','自分が読める向き','A','相手から読める向きで差し出すのが基本。'),q('adult-2','「御中」を使う相手は？','会社・部署','個人名','A','会社や部署には御中、個人には様を使う。'),q('adult-3','日本の成人年齢は？','18歳','20歳','A','2022年4月から成人年齢は18歳。'),q('adult-4','クーリングオフはすべての買い物に使える？','使えない','使える','A','対象となる取引類型や条件が決められている。',2),q('adult-5','税込1,100円。消費税10%なら税抜は？','1,000円','990円','A','1,000円×1.10＝1,100円。'),q('adult-6','銀行の普通預金の利息。一般に税は？','かかる','かからない','A','預金利息には原則として税金が源泉徴収される。',2)],
+values:[q('values-1','旅行するなら？','予定をきっちり決める','現地で決める',null,'多数派を選んだ人が生き残る。',1,'majority'),q('values-2','休日にうれしいのは？','家でゆっくり','外へ遊びに行く',null,'正解はこの場の多数派。',1,'majority'),q('values-3','焼肉で最初に頼みたいのは？','タン','カルビ',null,'みんなの価値観がそのまま正解を決める。',1,'majority'),q('values-4','友達との連絡は？','こまめに返す','あとでまとめて返す',null,'多数派側が生き残る。',1,'majority'),q('values-5','宝くじで1億円当たったら？','まず貯金・投資','すぐ大きく使う',null,'このメンバーの多数派が正解。',1,'majority'),q('values-6','飲み会の二次会は？','行きたい','帰りたい',null,'その場の空気が正解になる二択。',1,'majority')],
+majority:[q('majority-1','朝型？夜型？','朝型','夜型',null,'人数の多い側が勝ち。',1,'majority'),q('majority-2','犬派？猫派？','犬','猫',null,'この場の多数派が勝ち。',1,'majority'),q('majority-3','ラーメンは？','こってり','あっさり',null,'人数の多い側が生き残る。',1,'majority'),q('majority-4','夏と冬なら？','夏','冬',null,'このメンバーの多数派が正解。',1,'majority'),q('majority-5','映画を見るなら？','映画館','家',null,'人数の多い側が勝ち。',1,'majority'),q('majority-6','旅行なら？','国内','海外',null,'多数派を読めるかが勝負。',1,'majority')]
 };
-
-const genreLabels = {
-  party:'盛り上がり雑学', close:'ギリギリ雑学', trick:'ひっかけ', japan:'日本', world:'世界', food:'食べ物・飲み物', sports:'スポーツ', darts:'ダーツ', adult:'大人の常識'
-};
-
-function alivePlayers(){ return Object.values(players).filter(p=>p.status==='alive'); }
-function publicPlayers(){
-  const result={};
-  for(const [id,p] of Object.entries(players)) result[id]={name:p.name,status:p.status,progress:p.progress,answered:Boolean(p.choice),choice:p.choice};
-  return result;
-}
-function gameSnapshot(){
-  return {phase,round,currentQuestion:currentQuestion?{id:currentQuestion.id,question:currentQuestion.question,choiceA:currentQuestion.choiceA,choiceB:currentQuestion.choiceB,difficulty:currentQuestion.difficulty,genre:currentQuestion.genre}:null,playerCount:Object.keys(players).length,aliveCount:alivePlayers().length};
-}
-function emitState(){ io.emit('gameState',gameSnapshot()); io.emit('update',publicPlayers()); }
-function requireHost(socket,fn){ if(socket.id===hostSocketId) fn(); }
-function pickRandomQuestion(genre='party'){
-  const pool=questions[genre]||questions.party;
-  let available=pool.filter(q=>!usedQuestionIds.has(q.id));
-  if(!available.length){ pool.forEach(q=>usedQuestionIds.delete(q.id)); available=[...pool]; }
-  return available[Math.floor(Math.random()*available.length)];
-}
-
-io.on('connection',socket=>{
-  socket.emit('genres',genreLabels); socket.emit('gameState',gameSnapshot()); socket.emit('update',publicPlayers());
-
-  socket.on('registerHost',()=>{
-    if(!hostSocketId||hostSocketId===socket.id){ hostSocketId=socket.id; socket.emit('hostGranted',true); socket.emit('genres',genreLabels); }
-    else socket.emit('hostGranted',false);
-  });
-
-  socket.on('join',rawName=>{
-    const name=String(rawName||'').trim().slice(0,12); if(!name)return;
-    const existing=players[socket.id];
-    players[socket.id]={name,choice:null,status:existing?.status||'alive',progress:existing?.progress||0};
-    socket.emit('joined',{name}); emitState();
-  });
-
-  socket.on('choose',choice=>{
-    const player=players[socket.id];
-    if(!player||player.status!=='alive'||phase!=='question'||!['A','B'].includes(choice))return;
-    player.choice=choice; socket.emit('choiceAccepted',choice); emitState();
-  });
-
-  socket.on('getQuestions',genre=>requireHost(socket,()=>{
-    const list=(questions[genre]||[]).map(({correctAnswer,explanation,...q},index)=>({...q,index}));
-    socket.emit('questionsList',{genre,questions:list});
-  }));
-
-  function startQuestion(q,genre){
-    if(!q)return; currentQuestion={...q,genre}; usedQuestionIds.add(q.id); round+=1; phase='question';
-    Object.values(players).forEach(p=>p.choice=null); io.emit('question',gameSnapshot().currentQuestion); emitState();
-  }
-  socket.on('startRandom',genre=>requireHost(socket,()=>startQuestion(pickRandomQuestion(genre),genre)));
-  socket.on('loadQuestion',(index,genre)=>requireHost(socket,()=>startQuestion((questions[genre]||[])[index],genre)));
-
-  socket.on('revealAnswer',()=>requireHost(socket,()=>{
-    if(!currentQuestion||phase!=='question')return;
-    const correct=currentQuestion.correctAnswer;
-    Object.values(players).forEach(p=>{ if(p.status!=='alive')return; if(p.choice===correct)p.progress+=1; else p.status='dead'; });
-    phase=alivePlayers().length<=1&&Object.keys(players).length>1?'finished':'result';
-    io.emit('showAnswer',{correct,explanation:currentQuestion.explanation,choiceA:currentQuestion.choiceA,choiceB:currentQuestion.choiceB,winner:phase==='finished'&&alivePlayers()[0]?alivePlayers()[0].name:null});
-    emitState();
-  }));
-
-  socket.on('next',()=>requireHost(socket,()=>{
-    currentQuestion=null; if(phase!=='finished')phase='lobby'; Object.values(players).forEach(p=>p.choice=null); io.emit('clear-question'); emitState();
-  }));
-
-  socket.on('resetGame',()=>requireHost(socket,()=>{
-    currentQuestion=null; phase='lobby'; round=0; usedQuestionIds.clear();
-    Object.values(players).forEach(p=>{p.choice=null;p.status='alive';p.progress=0});
-    io.emit('gameReset'); io.emit('clear-question'); emitState();
-  }));
-
-  socket.on('disconnect',()=>{ if(socket.id===hostSocketId)hostSocketId=null; if(players[socket.id])delete players[socket.id]; emitState(); });
-});
-
-const port=process.env.PORT||3000;
-server.listen(port,()=>console.log(`二択サバイバル起動中: port ${port}`));
+const genreLabels={party:'盛り上がり雑学',close:'ギリギリ雑学',trick:'ひっかけ',values:'価値観二択',majority:'多数派予想',japan:'日本',world:'世界',food:'食べ物・飲み物',sports:'スポーツ',darts:'ダーツ',adult:'大人の常識'};
+function alivePlayers(){return Object.values(players).filter(p=>p.status==='alive')}function publicPlayers(){const r={};for(const[id,p]of Object.entries(players))r[id]={name:p.name,status:p.status,progress:p.progress,answered:Boolean(p.choice),choice:p.choice};return r}function gameSnapshot(){return{phase,round,currentQuestion:currentQuestion?{id:currentQuestion.id,question:currentQuestion.question,choiceA:currentQuestion.choiceA,choiceB:currentQuestion.choiceB,difficulty:currentQuestion.difficulty,genre:currentQuestion.genre,rule:currentQuestion.rule}:null,playerCount:Object.keys(players).length,aliveCount:alivePlayers().length}}function emitState(){io.emit('gameState',gameSnapshot());io.emit('update',publicPlayers())}function requireHost(s,fn){if(s.id===hostSocketId)fn()}function pickRandomQuestion(g='party'){const pool=questions[g]||questions.party;let a=pool.filter(x=>!usedQuestionIds.has(x.id));if(!a.length){pool.forEach(x=>usedQuestionIds.delete(x.id));a=[...pool]}return a[Math.floor(Math.random()*a.length)]}
+io.on('connection',socket=>{socket.emit('genres',genreLabels);socket.emit('gameState',gameSnapshot());socket.emit('update',publicPlayers());socket.on('registerHost',()=>{if(!hostSocketId||hostSocketId===socket.id){hostSocketId=socket.id;socket.emit('hostGranted',true);socket.emit('genres',genreLabels)}else socket.emit('hostGranted',false)});socket.on('join',raw=>{const name=String(raw||'').trim().slice(0,12);if(!name)return;const e=players[socket.id];players[socket.id]={name,choice:null,status:e?.status||'alive',progress:e?.progress||0};socket.emit('joined',{name});emitState()});socket.on('choose',choice=>{const p=players[socket.id];if(!p||p.status!=='alive'||phase!=='question'||!['A','B'].includes(choice))return;p.choice=choice;socket.emit('choiceAccepted',choice);emitState()});socket.on('getQuestions',g=>requireHost(socket,()=>{const list=(questions[g]||[]).map(({correctAnswer,explanation,...x},index)=>({...x,index}));socket.emit('questionsList',{genre:g,questions:list})}));function startQuestion(x,g){if(!x)return;currentQuestion={...x,genre:g};usedQuestionIds.add(x.id);round++;phase='question';Object.values(players).forEach(p=>p.choice=null);io.emit('question',gameSnapshot().currentQuestion);emitState()}socket.on('startRandom',g=>requireHost(socket,()=>startQuestion(pickRandomQuestion(g),g)));socket.on('loadQuestion',(i,g)=>requireHost(socket,()=>startQuestion((questions[g]||[])[i],g)));socket.on('revealAnswer',()=>requireHost(socket,()=>{if(!currentQuestion||phase!=='question')return;let correct=currentQuestion.correctAnswer,counts={A:0,B:0};if(currentQuestion.rule==='majority'){for(const p of alivePlayers())if(p.choice)counts[p.choice]++;correct=counts.A===counts.B?'TIE':counts.A>counts.B?'A':'B'}Object.values(players).forEach(p=>{if(p.status!=='alive')return;if(correct==='TIE'){if(p.choice)p.progress++;else p.status='dead'}else if(p.choice===correct)p.progress++;else p.status='dead'});phase=alivePlayers().length<=1&&Object.keys(players).length>1?'finished':'result';io.emit('showAnswer',{correct,rule:currentQuestion.rule,counts,explanation:currentQuestion.explanation,choiceA:currentQuestion.choiceA,choiceB:currentQuestion.choiceB,winner:phase==='finished'&&alivePlayers()[0]?alivePlayers()[0].name:null});emitState()}));socket.on('next',()=>requireHost(socket,()=>{currentQuestion=null;if(phase!=='finished')phase='lobby';Object.values(players).forEach(p=>p.choice=null);io.emit('clear-question');emitState()}));socket.on('resetGame',()=>requireHost(socket,()=>{currentQuestion=null;phase='lobby';round=0;usedQuestionIds.clear();Object.values(players).forEach(p=>{p.choice=null;p.status='alive';p.progress=0});io.emit('gameReset');io.emit('clear-question');emitState()}));socket.on('disconnect',()=>{if(socket.id===hostSocketId)hostSocketId=null;if(players[socket.id])delete players[socket.id];emitState()})});
+const port=process.env.PORT||3000;server.listen(port,()=>console.log(`二択サバイバル起動中: port ${port}`));
