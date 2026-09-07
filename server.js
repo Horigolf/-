@@ -68,15 +68,20 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('judge', (correctAnswer) => {
-        for (let id in players) {
-            if (players[id].status === 'alive' && players[id].choice !== correctAnswer) {
-                players[id].status = 'dead';
-            } else if (players[id].status === 'alive' && players[id].choice === correctAnswer) {
-                players[id].progress += 1;
+    socket.on('judge', (selectedAnswer) => {
+        if (currentQuestion) {
+            const correctAnswer = currentQuestion.correctAnswer;
+            io.emit('showAnswer', { correct: correctAnswer, selected: selectedAnswer });
+            
+            for (let id in players) {
+                if (players[id].status === 'alive' && players[id].choice !== correctAnswer) {
+                    players[id].status = 'dead';
+                } else if (players[id].status === 'alive' && players[id].choice === correctAnswer) {
+                    players[id].progress += 1;
+                }
             }
+            io.emit('update', players);
         }
-        io.emit('update', players);
     });
 
     socket.on('next', () => {
@@ -95,7 +100,6 @@ io.on('connection', (socket) => {
         if (questions[genre] && questionIndex >= 0 && questionIndex < questions[genre].length) {
             currentQuestion = { ...questions[genre][questionIndex], genre: genre };
             io.emit('question', currentQuestion);
-            // リセット状態に
             for (let id in players) {
                 players[id].choice = null;
                 players[id].x = 50;
