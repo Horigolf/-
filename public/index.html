@@ -4,47 +4,148 @@
     <meta charset="UTF-8">
     <title>二択サバイバル - メイン画面</title>
     <style>
-        body { text-align: center; font-family: sans-serif; background: #f0f8ff; }
+        * { box-sizing: border-box; }
+        body { text-align: center; font-family: sans-serif; background: #f0f8ff; padding: 10px; margin: 0; }
+        h1 { color: #333; margin: 10px 0; }
+        
+        #question-display {
+            font-size: 48px; font-weight: bold; color: #ff6600;
+            background: #fffacd; padding: 20px; border-radius: 10px;
+            margin: 15px 0; min-height: 80px; display: flex;
+            flex-direction: column; justify-content: center;
+        }
+        
         #field {
-            width: 80%; height: 400px; background: #fff; border: 4px solid #333;
-            margin: 20px auto; position: relative; overflow: hidden;
+            width: 90%; height: 400px; background: linear-gradient(to bottom, #e8f4f8, #fff);
+            border: 4px solid #333; margin: 15px auto; position: relative; overflow: hidden;
+            border-radius: 10px;
         }
+        
         .line { position: absolute; left: 50%; top: 0; width: 4px; height: 100%; background: #ccc; margin-left: -2px; }
-        .area-a { position: absolute; left: 10%; top: 10px; font-size: 40px; color: red; font-weight: bold;}
-        .area-b { position: absolute; right: 10%; top: 10px; font-size: 40px; color: blue; font-weight: bold;}
+        .track { position: absolute; bottom: 0; width: 100%; height: 60px; background: #8B4513; border-top: 3px solid #654321; }
+        .track-line { position: absolute; left: 0; width: 2px; height: 60px; background: #654321; }
+        
+        .area-a { position: absolute; left: 5%; top: 10px; font-size: 36px; color: red; font-weight: bold;}
+        .area-b { position: absolute; right: 5%; top: 10px; font-size: 36px; color: blue; font-weight: bold;}
+        
         .player {
-            position: absolute; bottom: 20px; width: 50px; height: 50px; background: #ffcc00;
-            border-radius: 50%; border: 2px solid #333; line-height: 50px; font-weight: bold; font-size: 12px;
-            transform: translateX(-50%); transition: left 0.5s ease;
+            position: absolute; bottom: 5px; width: 50px; height: 50px; background: #ffcc00;
+            border-radius: 50%; border: 2px solid #333; line-height: 25px; font-weight: bold; font-size: 11px;
+            transform: translateX(-50%); transition: left 0.5s ease, bottom 0.3s ease;
+            padding-top: 0; display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.3);
         }
-        .dead { background: #555; color: #fff; text-decoration: line-through; opacity: 0.5; bottom: 5px !important;}
-        #controls { margin-top: 20px; padding: 15px; background: #eee; }
-        button { font-size: 18px; padding: 10px 20px; cursor: pointer; margin: 5px; }
+        
+        .player-progress {
+            position: absolute; top: -20px; left: 50%; transform: translateX(-50%);
+            font-size: 12px; font-weight: bold; color: #333;
+        }
+        
+        .dead { background: #555; color: #fff; text-decoration: line-through; opacity: 0.5; }
+        
+        #controls { margin-top: 15px; padding: 15px; background: #eee; border-radius: 10px; }
+        button { font-size: 16px; padding: 10px 15px; cursor: pointer; margin: 5px; border-radius: 5px; border: 2px solid #333; }
+        .btn-genre { background: #e6f3ff; color: #0066cc; font-weight: bold; }
+        .btn-question { background: #ccffcc; color: #333; font-weight: bold; }
+        .btn-judge { background: #ffcccc; color: red; font-weight: bold; font-size: 18px; }
+        .btn-next { background: #ccccff; color: blue; font-weight: bold; }
+        
+        #genre-select { font-size: 16px; padding: 8px; margin: 5px; }
+        #question-menu { margin: 15px 0; background: #f9f9f9; padding: 15px; border-radius: 10px; }
+        #question-menu select { font-size: 16px; padding: 8px; width: 90%; margin: 5px 0; }
+        
+        .section-title { font-size: 18px; font-weight: bold; color: #333; margin-top: 15px; text-align: left; padding-left: 5%; }
+        
+        .genre-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px; margin: 10px 0; }
     </style>
 </head>
 <body>
-    <h1>二択サバイバル！</h1>
+    <h1>🚂 二択サバイバル！（トロッコレース）</h1>
     <p>参加者はスマホで <strong>/play.html</strong> にアクセス！</p>
+    
+    <div id="question-display">🚀 お題を選んでスタート！</div>
     
     <div id="field">
         <div class="line"></div>
-        <div class="area-a">A (左)</div>
-        <div class="area-b">B (右)</div>
+        <div class="area-a">← A</div>
+        <div class="area-b">B →</div>
+        <div class="track">
+            <div id="track-lines"></div>
+        </div>
         <div id="players-container"></div>
     </div>
 
     <div id="controls">
-        <h3>進行役コントローラー</h3>
-        <button onclick="judge('A')">正解は【A】（Bは脱落）</button>
-        <button onclick="judge('B')">正解は【B】（Aは脱落）</button>
-        <button onclick="nextQuestion()">次の問題へ（位置リセット）</button>
+        <div class="section-title">🎯 ジャンル選択</div>
+        <div class="genre-buttons">
+            <button class="btn-genre" onclick="selectGenre('kanji')">📚 難読漢字</button>
+            <button class="btn-genre" onclick="selectGenre('country_area')">🗺️ 国の面積</button>
+            <button class="btn-genre" onclick="selectGenre('country_population')">👥 国の人口</button>
+            <button class="btn-genre" onclick="selectGenre('general')">🌍 一般常識</button>
+        </div>
+
+        <div class="section-title">📝 お題選択</div>
+        <div id="question-menu">
+            <select id="question-select" onchange="loadSelectedQuestion()">
+                <option value="">-- ジャンルを選んでからお題を選択 --</option>
+            </select>
+            <button class="btn-question" onclick="loadSelectedQuestion()">お題をセット</button>
+        </div>
+
+        <div class="section-title">⚔️ ゲーム進行</div>
+        <button class="btn-judge" onclick="judge('A')">✅ 正解は【A】</button>
+        <button class="btn-judge" onclick="judge('B')">✅ 正解は【B】</button>
+        <button class="btn-next" onclick="nextQuestion()">➡️ 次の問題へ</button>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
         const container = document.getElementById('players-container');
+        const questionDisplay = document.getElementById('question-display');
+        const questionSelect = document.getElementById('question-select');
+        const trackLines = document.getElementById('track-lines');
+        
+        let currentGenre = 'kanji';
+        let currentQuestions = [];
 
+        // トラックのラインを描画
+        function drawTrackLines() {
+            trackLines.innerHTML = '';
+            for (let i = 0; i < 100; i += 10) {
+                const line = document.createElement('div');
+                line.className = 'track-line';
+                line.style.left = i + '%';
+                trackLines.appendChild(line);
+            }
+        }
+        drawTrackLines();
+
+        // ジャンル選択
+        function selectGenre(genre) {
+            currentGenre = genre;
+            socket.emit('getQuestions', genre);
+        }
+
+        // サーバーから問題リストを受け取る
+        socket.on('questionsList', (questions) => {
+            currentQuestions = questions;
+            populateQuestionSelect();
+        });
+
+        // ドロップダウンに問題を追加
+        function populateQuestionSelect() {
+            questionSelect.innerHTML = '<option value="">-- お題を選んでください --</option>';
+            currentQuestions.forEach((q, index) => {
+                const option = document.createElement('option');
+                option.value = index;
+                const difficulty = '⭐'.repeat(q.difficulty);
+                option.textContent = `${index + 1}. ${q.question} - ${q.choiceA} / ${q.choiceB} ${difficulty}`;
+                questionSelect.appendChild(option);
+            });
+        }
+
+        // Socket.io イベント
         socket.on('update', (players) => {
             container.innerHTML = '';
             for (let id in players) {
@@ -52,13 +153,54 @@
                 const div = document.createElement('div');
                 div.className = 'player ' + (p.status === 'dead' ? 'dead' : '');
                 div.style.left = p.x + '%';
-                div.innerText = p.name;
+                
+                // プログレスバーを追加
+                const progress = document.createElement('div');
+                progress.className = 'player-progress';
+                progress.textContent = `${p.progress}`;
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = p.name.substring(0, 3);
+                
+                div.appendChild(progress);
+                div.appendChild(nameSpan);
                 container.appendChild(div);
             }
         });
 
+        socket.on('question', (question) => {
+            displayQuestion(question);
+        });
+
+        socket.on('clear-question', () => {
+            questionDisplay.innerText = '🚀 次のお題をセット';
+            questionSelect.value = '';
+        });
+
+        // 関数
+        function displayQuestion(question) {
+            questionDisplay.innerHTML = `
+                <div style="font-size: 56px; margin-bottom: 10px;">❓ ${question.question}</div>
+                <div style="font-size: 24px;">
+                    <span style="color: red; font-weight: bold;">A: ${question.choiceA}</span> 
+                    <span style="margin: 0 20px; color: #666; font-size: 28px;">VS</span>
+                    <span style="color: blue; font-weight: bold;">B: ${question.choiceB}</span>
+                </div>
+            `;
+        }
+
+        function loadSelectedQuestion() {
+            const index = questionSelect.value;
+            if (index !== '') {
+                socket.emit('loadQuestion', parseInt(index), currentGenre);
+            }
+        }
+
         function judge(answer) { socket.emit('judge', answer); }
         function nextQuestion() { socket.emit('next'); }
+
+        // 初期ジャンル読み込み
+        selectGenre('kanji');
     </script>
 </body>
 </html>
